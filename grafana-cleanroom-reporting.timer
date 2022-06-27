@@ -1,0 +1,9 @@
+[Unit]
+Description=Generate a weekly report on 23:59
+
+[Timer]
+OnCalendar=Fri 23:59
+Persistent=true
+
+[Install]
+WantedBy=timers.target
