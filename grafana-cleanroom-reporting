@@ -1,0 +1,113 @@
+#!/bin/bash
+# grafana-cleanroom-reporting: Send screenshots of grafana panels to an email address
+#        requires: curl#, mutt
+
+SUBJECT="Weekly report for <TODO: hostname>"
+MAILTO="<TODO: name@example.com>"
+CCTO="<TODO: another_name@example.com>"
+
+# Server configuration
+URL=localhost
+PORT=443
+API_KEY=<TODO: API Key>
+ORG_ID=1
+DASHBOARD_NAME=<TODO: dashboard name. I.e.: dylos-dc1700>
+DASHBOARD_ID=<TODO: dashboard id. I.e.: sJnDFsJmk>
+PANEL_ID=<TODO: panel id. I.e.: 18>
+
+# Define the panel IDs to be generated
+STRIPS_LAB=(15 16)
+CLEANROOM=(4 8)
+SHT=(18 19)
+UPTIME=(10 13 14 20)
+
+WIDTH=1024
+HEIGHT=480
+
+TIMEZONE=America%2FLos_Angeles
+TIME_FROM=now-7d
+TIME_TO=now
+TIME_NOW=$(date +"%Y%m%d-%H-%M")
+# FILE_LIST will get populated by specific_panel(), adding files to it will include them in the attachments
+FILE_LIST=
+REPORT=/tmp/report.html
+
+cd /tmp
+cp /usr/local/etc/grafana-cleanroom-reporting/report.html $REPORT
+sed -i "s/PLACEHOLDER/$(date +%V)/" $REPORT
+
+# Main Function
+generate_summary()
+{
+  # Generate images for reports
+  generate_strips_lab_report
+  generate_cleanroom_report
+  generate_sht_report
+  generate_uptime_report
+}
+
+send_email_summary()
+{
+  generate_summary
+  # Attach images to mail and clean up afterwards
+  mutt  -e "set content_type=text/html" -s "${SUBJECT}" -c ${CCTO}  -a ${FILE_LIST} -- ${MAILTO} < $REPORT
+  rm $REPORT
+  rm ${FILE_LIST}
+}
+# !Main Function
+
+update_variable()
+{
+  # Allow to update the curl call string with new values
+  TEMP="-H 'Authorization: Bearer ${API_KEY}' 'https://${URL}:${PORT}/render/d-solo/${DASHBOARD_ID}/${DASHBOARD_NAME}?orgId=${ORG_ID}&refresh=1h&from=${TIME_FROM}&to=${TIME_TO}&panelId=${PANEL_ID}&width=${WIDTH}&height=${HEIGHT}&tz=${TIMEZONE}' -s"
+}
+
+basic_report()
+{
+  # Test the defaults as defined above to download a rendered image of a panel
+  echo "-H 'Authorization: Bearer ${API_KEY}' 'https://${URL}:${PORT}/render/d-solo/${DASHBOARD_ID}/${DASHBOARD_NAME}?orgId=${ORG_ID}&refresh=1m&from=${TIME_FROM}&to=${TIME_TO}&panelId=${PANEL_ID}&width=${WIDTH}&height=${HEIGHT}&tz=${TIMEZONE}'" | xargs curl -k > image.png
+}
+
+generate_panel()
+{
+  OUTPUT=$TIME_NOW-$1.png
+  echo $TEMP | xargs curl -k  > $OUTPUT
+  FILE_LIST="${FILE_LIST} $OUTPUT"
+  # 'Soos' is a placeholder in the report template that needs to replaced. Yes I was watching 'fixin it with Soos' while I wrote this
+  sed -i "/Soos/a \ \ \ \ <img src=\"$OUTPUT\">" $REPORT
+}
+
+specific_panel()
+{
+  # Usage: specific_panel strips_lab-00 18 1024 480
+  PANEL_ID=$2
+  WIDTH=$3
+  HEIGHT=$4
+  update_variable
+  generate_panel $1
+}
+
+generate_strips_lab_report()
+{
+  # Generate images with dimensions of 1024:640
+  for i in "${STRIPS_LAB[@]}" ; do
+    specific_panel strips-$i $i $WIDTH $HEIGHT
+  done
+}
+
+generate_cleanroom_report()
+{
+  for i in "${CLEANROOM[@]}" ; do
+    specific_panel cleanroom-$i $i $WIDTH $HEIGHT
+  done
+}
+
+generate_sht_report()
+{
+  for i in "${SHT[@]}" ; do
+    specific_panel uptime-$i $i $WIDTH $HEIGHT
+  done
+}
+
+# Run the main function to send the email summary
+send_email_summary
