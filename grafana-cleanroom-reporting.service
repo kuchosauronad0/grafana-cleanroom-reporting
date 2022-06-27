@@ -1,0 +1,10 @@
+[Unit]
+Description=Gather screenshots of grafana panels and send out an email
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/grafana-cleanroom-reporting
+EnvironmentFile=-/usr/local/etc/grafana-cleanroom-reporting
+User=dusty
+Group=dusty
+Group=systemd-journal
